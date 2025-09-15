@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Reporter</title>
+    <!-- Use Tailwind CSS for rapid, responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- EXIF.js library to read photo metadata for location data -->
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 600px;
+        }
+        #message-box {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Message Box for user feedback -->
+    <div id="message-box" class="bg-blue-500 text-white p-4 rounded-lg shadow-lg">
+        <p id="message-text"></p>
+    </div>
+
+    <div class="container bg-white p-8 rounded-2xl shadow-xl w-full">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Report a Community Problem</h1>
+        <p class="text-center text-gray-600 mb-6">Your report helps make our community better.</p>
+
+        <form id="report-form" class="space-y-6">
+
+            <!-- Description Field -->
+            <div>
+                <label for="description" class="block text-gray-700 font-semibold mb-2">What is the problem?</label>
+                <textarea id="description" name="description" rows="4" placeholder="e.g., Damaged pothole, overflowing dustbin, street light out..."
+                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" required></textarea>
+            </div>
+
+            <!-- Image Upload Field -->
+            <div>
+                <label for="photo" class="block text-gray-700 font-semibold mb-2">Upload a photo:</label>
+                <input type="file" id="photo" name="photo" accept="image/*" class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" required>
+            </div>
+
+            <!-- Location Status Display -->
+            <div>
+                <label class="block text-gray-700 font-semibold mb-2">Location Status:</label>
+                <div id="location-status" class="flex items-center space-x-2 text-gray-500">
+                    <i class="fas fa-spinner animate-spin"></i>
+                    <span id="location-text">Waiting for photo upload...</span>
+                </div>
+            </div>
+
+            <!-- Hidden location inputs -->
+            <input type="hidden" id="latitude" name="latitude">
+            <input type="hidden" id="longitude" name="longitude">
+
+            <!-- Submit Button -->
+            <button type="submit" id="submit-button"
+                    class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold text-lg hover:bg-blue-700 transition duration-200 focus:outline-none focus:ring-4 focus:ring-blue-300">
+                Submit Report
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('report-form');
+        const photoInput = document.getElementById('photo');
+        const submitButton = document.getElementById('submit-button');
+        const latitudeInput = document.getElementById('latitude');
+        const longitudeInput = document.getElementById('longitude');
+
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const locationStatus = document.getElementById('location-status');
+        const locationText = document.getElementById('location-text');
+
+        function showMessage(message, type = 'success') {
+            messageText.textContent = message;
+            messageBox.style.display = 'block';
+            if (type === 'success') {
+                messageBox.classList.remove('bg-red-500');
+                messageBox.classList.add('bg-blue-500');
+            } else if (type === 'error') {
+                messageBox.classList.remove('bg-blue-500');
+                messageBox.classList.add('bg-red-500');
+            }
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 3000);
+        }
+
+        function toDecimal(dms) {
+            if (!dms || dms.length < 3) return null;
+            const degrees = dms[0].numerator / dms[0].denominator;
+            const minutes = dms[1].numerator / dms[1].denominator;
+            const seconds = dms[2].numerator / dms[2].denominator;
+            return degrees + (minutes / 60) + (seconds / 3600);
+        }
+
+        function getGeolocation(callback) {
+            locationStatus.innerHTML = '<i class="fas fa-spinner animate-spin"></i><span class="text-gray-500">Attempting to get device location...</span>';
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    callback(position.coords.latitude, position.coords.longitude);
+                    locationStatus.innerHTML = '<i class="fas fa-check-circle text-green-500"></i><span class="text-gray-800">Location captured from device.</span>';
+                }, error => {
+                    console.error("Geolocation error:", error);
+                    locationStatus.innerHTML = '<i class="fas fa-exclamation-triangle text-red-500"></i><span class="text-red-500">Failed to get device location.</span>';
+                    showMessage('Unable to get device location. Please try again.', 'error');
+                    callback(null, null);
+                });
+            } else {
+                locationStatus.innerHTML = '<i class="fas fa-exclamation-triangle text-red-500"></i><span class="text-red-500">Geolocation not supported.</span>';
+                showMessage('Geolocation is not supported by your browser.', 'error');
+                callback(null, null);
+            }
+        }
+        
+        // Listen for a photo file to be selected
+        photoInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (!file) {
+                locationStatus.innerHTML = '<i class="fas fa-spinner animate-spin"></i><span class="text-gray-500">Waiting for photo upload...</span>';
+                return;
+            }
+
+            locationStatus.innerHTML = '<i class="fas fa-spinner animate-spin"></i><span class="text-gray-500">Checking photo for location data...</span>';
+
+            EXIF.getData(file, function() {
+                const latDms = EXIF.getTag(this, 'GPSLatitude');
+                const lonDms = EXIF.getTag(this, 'GPSLongitude');
+                const latRef = EXIF.getTag(this, 'GPSLatitudeRef');
+                const lonRef = EXIF.getTag(this, 'GPSLongitudeRef');
+
+                if (latDms && lonDms) {
+                    let lat = toDecimal(latDms);
+                    let lon = toDecimal(lonDms);
+                    
+                    if (latRef === 'S') lat = -lat;
+                    if (lonRef === 'W') lon = -lon;
+
+                    latitudeInput.value = lat;
+                    longitudeInput.value = lon;
+                    
+                    locationStatus.innerHTML = '<i class="fas fa-check-circle text-green-500"></i><span class="text-gray-800">Location captured from photo!</span>';
+                } else {
+                    // Fallback to device's current location if photo has no EXIF data
+                    showMessage('No GPS data found in photo. Using your device\'s location.', 'info');
+                    getGeolocation((lat, lon) => {
+                        if (lat !== null && lon !== null) {
+                            latitudeInput.value = lat;
+                            longitudeInput.value = lon;
+                        }
+                    });
+                }
+            });
+        });
+
+        // Initial state for location status
+        window.onload = function() {
+            locationStatus.innerHTML = '<i class="fas fa-spinner animate-spin"></i><span class="text-gray-500">Waiting for photo upload...</span>';
+        };
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            submitButton.disabled = true;
+            submitButton.textContent = 'Submitting...';
+            submitButton.classList.add('bg-blue-400', 'cursor-not-allowed');
+
+            const file = photoInput.files[0];
+            if (!file) {
+                showMessage('Please select a photo.', 'error');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Report';
+                submitButton.classList.remove('bg-blue-400', 'cursor-not-allowed');
+                return;
+            }
+
+            const description = document.getElementById('description').value;
+
+            // Use FileReader to convert the image to a Base64 string
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+
+            reader.onload = async () => {
+                const base64Image = reader.result;
+
+                let lat = latitudeInput.value;
+                let lon = longitudeInput.value;
+
+                if (lat === null || lon === null || lat === "" || lon === "") {
+                    // This can happen if geolocation failed and there was no EXIF data
+                    showMessage('Location data could not be retrieved. Please try again.', 'error');
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Submit Report';
+                    submitButton.classList.remove('bg-blue-400', 'cursor-not-allowed');
+                    return;
+                }
+                
+                const formData = {
+                    description: description,
+                    photo_data: base64Image,
+                    latitude: lat,
+                    longitude: lon
+                };
+
+                try {
+                    const response = await fetch('http://localhost:3000/api/submit-report', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(formData),
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok && result.success) {
+                        showMessage('Report submitted successfully!');
+                        form.reset();
+                        // Reset location status after successful submission
+                        locationStatus.innerHTML = '<i class="fas fa-spinner animate-spin"></i><span class="text-gray-500">Waiting for photo upload...</span>';
+                    } else {
+                        showMessage(`Submission failed: ${result.message}`, 'error');
+                    }
+
+                } catch (error) {
+                    console.error('Error submitting form:', error);
+                    showMessage('An unexpected error occurred. Please try again later.', 'error');
+                } finally {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Submit Report';
+                    submitButton.classList.remove('bg-blue-400', 'cursor-not-allowed');
+                }
+            };
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Municipality Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase Libraries -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        #map {
+            height: 300px;
+            width: 100%;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        .container {
+            max-width: 900px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="container bg-white p-8 rounded-2xl shadow-xl w-full">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Municipality Dashboard</h1>
+        <p class="text-center text-gray-600 mb-6">Real-time community reports</p>
+        
+        <div id="loading" class="text-center text-gray-500 my-8">
+            <i class="fas fa-spinner animate-spin text-2xl"></i>
+            <p class="mt-2">Connecting to database...</p>
+        </div>
+
+        <div id="reports-container" class="space-y-6 hidden">
+            <!-- Reports will be dynamically injected here -->
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, addDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const loadingDiv = document.getElementById('loading');
+        const reportsContainer = document.getElementById('reports-container');
+
+        function renderReport(report) {
+            return `
+                <div class="bg-gray-50 p-6 rounded-xl shadow-md border border-gray-200">
+                    <div class="flex items-center space-x-4 mb-4">
+                        <i class="fas fa-exclamation-circle text-red-500 text-2xl"></i>
+                        <div class="flex-1">
+                            <h2 class="font-bold text-gray-800 text-xl">Report #${report.id.substring(0, 8)}</h2>
+                            <p class="text-gray-500 text-sm">Submitted at: ${report.timestamp.toDate().toLocaleString()}</p>
+                        </div>
+                    </div>
+                    <p class="text-gray-700 mb-4">${report.description}</p>
+                    
+                    ${report.photo_data ? 
+                        `<div class="mb-4">
+                            <img src="${report.photo_data}" alt="Report Photo" class="w-full rounded-lg shadow-md" />
+                        </div>` : ''
+                    }
+
+                    <div class="flex items-center space-x-4 text-gray-600 text-sm mb-4">
+                        <p><i class="fas fa-map-marker-alt text-blue-500 mr-1"></i>
+                           Lat: ${report.latitude.toFixed(4)}, Lon: ${report.longitude.toFixed(4)}</p>
+                    </div>
+
+                    <div id="map-${report.id}" class="w-full h-48 rounded-lg mb-2"></div>
+                </div>
+            `;
+        }
+
+        async function initAuth() {
+            try {
+                if (authToken) {
+                    await signInWithCustomToken(auth, authToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                startListeningForReports();
+            } catch (error) {
+                console.error("Authentication error:", error);
+                loadingDiv.textContent = 'Failed to authenticate. Check the console for details.';
+            }
+        }
+
+        function startListeningForReports() {
+            const reportsPath = `/artifacts/${appId}/public/data/reports`;
+            const reportsRef = collection(db, reportsPath);
+            
+            onSnapshot(reportsRef, (snapshot) => {
+                loadingDiv.style.display = 'none';
+                reportsContainer.style.display = 'block';
+                reportsContainer.innerHTML = '';
+
+                if (snapshot.empty) {
+                    reportsContainer.innerHTML = '<p class="text-center text-gray-500">No reports found yet.</p>';
+                    return;
+                }
+
+                snapshot.docs.sort((a, b) => b.data().timestamp.toDate() - a.data().timestamp.toDate()).forEach(doc => {
+                    const report = { id: doc.id, ...doc.data() };
+                    const reportElement = document.createElement('div');
+                    reportElement.innerHTML = renderReport(report);
+                    reportsContainer.appendChild(reportElement.firstChild);
+
+                    initMap(report.latitude, report.longitude, `map-${report.id}`);
+                });
+            }, (error) => {
+                console.error("Error fetching reports:", error);
+                loadingDiv.textContent = 'Error loading reports. Check the console.';
+            });
+        }
+        
+        function initMap(lat, lon, mapElementId) {
+            if (!lat || !lon) {
+                console.warn(`No valid coordinates for map ID: ${mapElementId}`);
+                document.getElementById(mapElementId).textContent = "No map data available.";
+                document.getElementById(mapElementId).classList.add('flex', 'items-center', 'justify-center', 'text-gray-400');
+                return;
+            }
+            
+            const mapOptions = {
+                center: { lat: parseFloat(lat), lng: parseFloat(lon) },
+                zoom: 15,
+                disableDefaultUI: true,
+            };
+
+            const map = new google.maps.Map(document.getElementById(mapElementId), mapOptions);
+
+            new google.maps.Marker({
+                position: { lat: parseFloat(lat), lng: parseFloat(lon) },
+                map: map,
+                title: 'Report Location',
+            });
+        }
+
+        window.onload = initAuth;
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCZBMFHsN_4bPFSfN9M08e5NNH7_7RIwaQ&callback=initMap"></script>
+</body>
+</html>
