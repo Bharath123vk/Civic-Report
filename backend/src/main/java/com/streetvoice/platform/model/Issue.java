@@ -28,14 +28,17 @@ public class Issue {
     @Enumerated(EnumType.STRING)
     @Builder.Default
     private IssueStatus status = IssueStatus.OPEN;
+
     @Builder.Default
-    private int upvoteCount=0;
+    private int upvoteCount = 0;
 
     @ManyToOne
     @JoinColumn(name = "reported_by")
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties("reportedIssues")
     private User reportedBy;
+
     @Builder.Default
-    private LocalDateTime createdAt=LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now();
 
     private LocalDateTime updatedAt;
 }
