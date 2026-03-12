@@ -15,6 +15,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -37,7 +39,7 @@ public class UserService {
 
         userRepository.save(user);
 
-        var jwtToken = jwtService.generateToken(user);
+        var jwtToken = jwtService.generateToken(Map.of("role", user.getRole().name()), user);
         return AuthenticationResponseDTO.builder().token(jwtToken).build();
     }
 
@@ -48,7 +50,7 @@ public class UserService {
         var user = userRepository.findByEmail(dto.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        var jwtToken = jwtService.generateToken(user);
+        var jwtToken = jwtService.generateToken(Map.of("role", user.getRole().name()), user);
         return AuthenticationResponseDTO.builder().token(jwtToken).build();
     }
 }
