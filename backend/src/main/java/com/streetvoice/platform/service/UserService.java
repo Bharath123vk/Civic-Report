@@ -3,6 +3,8 @@ package com.streetvoice.platform.service;
 import com.streetvoice.platform.dto.AuthenticationResponseDTO;
 import com.streetvoice.platform.dto.LoginRequestDTO;
 import com.streetvoice.platform.dto.UserRegistrationDTO;
+import com.streetvoice.platform.exception.DuplicateResourceException;
+import com.streetvoice.platform.exception.ResourceNotFoundException;
 import com.streetvoice.platform.model.Role;
 import com.streetvoice.platform.model.User;
 import com.streetvoice.platform.repository.UserRepository;
@@ -24,7 +26,7 @@ public class UserService {
 
     public AuthenticationResponseDTO register(UserRegistrationDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already exists");
+            throw new DuplicateResourceException("Email already exists");
         }
         User user = User.builder()
                 .name(dto.getName())
@@ -44,7 +46,7 @@ public class UserService {
                 new UsernamePasswordAuthenticationToken(dto.getEmail(), dto.getPassword()));
 
         var user = userRepository.findByEmail(dto.getEmail())
-                .orElseThrow();
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         var jwtToken = jwtService.generateToken(user);
         return AuthenticationResponseDTO.builder().token(jwtToken).build();

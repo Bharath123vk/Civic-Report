@@ -1,6 +1,8 @@
 package com.streetvoice.platform.service;
 
 import com.streetvoice.platform.dto.IssueRequestDTO;
+import com.streetvoice.platform.exception.DuplicateResourceException;
+import com.streetvoice.platform.exception.ResourceNotFoundException;
 import com.streetvoice.platform.model.Issue;
 import com.streetvoice.platform.model.IssueStatus;
 import com.streetvoice.platform.model.IssueVote;
@@ -25,7 +27,7 @@ public class IssueService {
 
     public Issue reportIssue(IssueRequestDTO dto, String reporterEmail) {
         User user = userRepository.findByEmail(reporterEmail)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         Issue issue = Issue.builder()
                 .title(dto.getTitle())
@@ -50,14 +52,14 @@ public class IssueService {
 
     public Issue resolveIssue(Long id, String adminEmail, IssueStatus newStatus) {
         User admin = userRepository.findByEmail(adminEmail)
-                .orElseThrow(() -> new RuntimeException("Admin not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
 
         if (admin.getRole() != Role.ROLE_ADMIN) {
-            throw new RuntimeException("Only admins can resolve issues");
+            throw new DuplicateResourceException("Only admins can resolve issues");
         }
 
         Issue issue = issueRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Issue not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
 
         issue.setStatus(newStatus);
         issue.setUpdatedAt(LocalDateTime.now());
@@ -67,13 +69,13 @@ public class IssueService {
 
     public Issue upvoteIssue(Long issueId, String userEmail) {
         User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         Issue issue = issueRepository.findById(issueId)
-                .orElseThrow(() -> new RuntimeException("Issue not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
 
         if (issueVoteRepository.existsByUserAndIssue(user, issue)) {
-            throw new RuntimeException("User has already upvoted this issue");
+            throw new DuplicateResourceException("User has already upvoted this issue");
         }
 
         IssueVote vote = IssueVote.builder()
