@@ -38,6 +38,32 @@ Built with a robust **Java Spring Boot** backend and a lightning-fast **React + 
 - **Time Formatting:** Date-fns
 
 ---
+## 🏗️ Architecture
+
+```
++----------------------+
+|      Frontend        |
+|    React + Vite      |
+|   Tailwind CSS       |
++----------+-----------+
+           |
+           |  HTTP / REST API
+           v
++----------------------+
+|       Backend        |
+|     Spring Boot      |
+|  Spring Security     |
+|       JWT Auth       |
++----------+-----------+
+           |
+           |  JPA / Hibernate
+           v
++----------------------+
+|       Database       |
+|      PostgreSQL      |
++----------------------+
+```
+
 
 ## 🚀 Getting Started
 
